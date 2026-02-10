@@ -14,6 +14,17 @@ const taskSchema = new mongoose.Schema(
             type: String,
             required: true,
         },
+        department: {
+            type: [String],
+        },
+        teamLead: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+        },
+        projectLead: [{
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+        }],
         workCategory: {
             type: String,
         },
@@ -57,6 +68,10 @@ const taskSchema = new mongoose.Schema(
             type: String,
             enum: ["Pending", "In Progress", "Completed", "Overdue", "Hold"],
             default: "Pending",
+        },
+        assignedBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
         },
         assignedTo: [{
             type: mongoose.Schema.Types.ObjectId,

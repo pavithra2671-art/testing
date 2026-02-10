@@ -47,6 +47,46 @@ export const createTask = async (req, res) => {
             parsedAssignee = [assignee];
         }
 
+        // Parse projectLead
+        let parsedProjectLead = [];
+        if (req.body.projectLead) {
+            if (typeof req.body.projectLead === 'string') {
+                try {
+                    parsedProjectLead = JSON.parse(req.body.projectLead);
+                } catch (e) {
+                    parsedProjectLead = [req.body.projectLead]; // Fallback
+                }
+            } else if (Array.isArray(req.body.projectLead)) {
+                parsedProjectLead = req.body.projectLead;
+            }
+        }
+
+        // Handle assignedBy (User ID)
+        let parsedAssignedBy = req.body.assignedBy;
+        if (parsedAssignedBy === "" || parsedAssignedBy === "null" || parsedAssignedBy === "undefined") {
+            parsedAssignedBy = null;
+        }
+
+        // Parse department
+        let parsedDepartment = [];
+        if (req.body.department) {
+            if (typeof req.body.department === 'string') {
+                try {
+                    parsedDepartment = JSON.parse(req.body.department);
+                } catch (e) {
+                    parsedDepartment = [req.body.department];
+                }
+            } else if (Array.isArray(req.body.department)) {
+                parsedDepartment = req.body.department;
+            }
+        }
+
+        // Handle teamLead (Optional ObjectId)
+        let parsedTeamLead = req.body.teamLead;
+        if (parsedTeamLead === "" || parsedTeamLead === "null" || parsedTeamLead === "undefined") {
+            parsedTeamLead = null;
+        }
+
         // --- STRICT MODE ASSIGNMENT LOGIC ---
         // 1. Single: assignee = [UserIDs]
         // 2. Department: assignee = [DeptNames]
@@ -75,6 +115,10 @@ export const createTask = async (req, res) => {
             assignType,
             assignee: targetAssignee, // Stores Targets
             assignedTo: [], // Starts Empty! (Acceptance Flow)
+            projectLead: parsedProjectLead, // Use parsed value
+            department: parsedDepartment, // Added Department
+            teamLead: parsedTeamLead,     // Added Team Lead
+            assignedBy: parsedAssignedBy, // Added Assigned By
             priority,
             startDate,
             startTime,
@@ -147,7 +191,9 @@ export const getInvitations = async (req, res) => {
         const allPending = await Task.find({
             status: { $in: ["Pending", "In Progress"] },
             "declinedBy.userId": { $ne: userId }
-        });
+        })
+            .populate("projectLead", "name")
+            .populate("teamLead", "name");
 
         const myInvitations = allPending.filter(task => {
             const isAssigned = (task.assignedTo || []).some(id => id.toString() === userId.toString());
@@ -287,7 +333,10 @@ export const getMyTasks = async (req, res) => {
         const tasks = await Task.find({
             assignedTo: userId,
             status: { $in: ["In Progress", "Completed", "Overdue", "Hold"] }
-        });
+        })
+            .populate("projectLead", "name")
+            .populate("teamLead", "name")
+            .populate("assignedBy", "name");
 
         res.json(tasks);
     } catch (error) {
@@ -348,7 +397,11 @@ export const getTasksByEmployee = async (req, res) => {
         // Fix ObjectId casting for array query
         const tasks = await Task.find({
             assignedTo: employeeId
-        }).sort({ createdAt: -1 });
+        })
+            .sort({ createdAt: -1 })
+            .populate("projectLead", "name")
+            .populate("teamLead", "name")
+            .populate("assignedBy", "name");
 
         res.json(tasks);
     } catch (error) {
@@ -362,7 +415,11 @@ export const getTasksByEmployee = async (req, res) => {
 // @access  Public (Should be Admin)
 export const getAllTasks = async (req, res) => {
     try {
-        const tasks = await Task.find({}).sort({ createdAt: -1 });
+        const tasks = await Task.find({})
+            .sort({ createdAt: -1 })
+            .populate("projectLead", "name")
+            .populate("teamLead", "name")
+            .populate("assignedBy", "name");
         res.json(tasks);
     } catch (error) {
         console.error("Error fetching all tasks:", error);

@@ -7,7 +7,7 @@ const router = express.Router();
 // GET ALL EMPLOYEES
 router.get("/all", async (req, res) => {
     try {
-        const users = await User.find({ role: { $ne: "Super Admin" } }).select("employeeId name email role joiningDate");
+        const users = await User.find({ role: { $ne: "Super Admin" } }).select("employeeId name email role designation joiningDate");
         res.json(users);
     } catch (error) {
         res.status(500).json({ message: error.message });

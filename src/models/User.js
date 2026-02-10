@@ -38,10 +38,10 @@ const userSchema = new mongoose.Schema(
       required: true,
     },
     // New fields for Office Chat
-    designation: { // Ensure designation exists and is consistent
-      type: String,
-      default: ""
-    },
+    // designation: { // Ensure designation exists and is consistent
+    //   type: String,
+    //   default: ""
+    // },
     description: {
       type: String,
       default: ""
