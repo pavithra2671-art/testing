@@ -25,10 +25,13 @@ connectDB().then(() => {
   seedSuperAdmin();
 });
 
-"http://localhost:5173",
+const allowedOrigins = [
+  "http://localhost:5173",
   "http://localhost:3000",
   "https://loquacious-phoenix-c65c47.netlify.app",
-  "https://task-manager-fox-frontend.onrender.com"
+  "https://task-manager-fox-frontend.onrender.com",
+  "https://foxtaskmanager.netlify.app"
+];
 
 const io = new Server(httpServer, {
   cors: {
