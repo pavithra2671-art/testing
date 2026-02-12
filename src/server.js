@@ -30,7 +30,8 @@ const allowedOrigins = [
   "http://localhost:3000",
   "https://loquacious-phoenix-c65c47.netlify.app",
   "https://task-manager-fox-frontend.onrender.com",
-  "https://foxtaskmanager.netlify.app"
+  "https://foxtaskmanager.netlify.app",
+  "https://benevolent-gelato-1f2e01.netlify.app"
 ];
 
 const io = new Server(httpServer, {
