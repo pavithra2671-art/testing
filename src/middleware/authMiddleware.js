@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
+import User from '../models/User.js';
 
-const verifyToken = (req, res, next) => {
+const verifyToken = async (req, res, next) => {
     const authHeader = req.headers['authorization'];
     let token = authHeader && authHeader.split(' ')[1];
 
@@ -14,9 +15,21 @@ const verifyToken = (req, res, next) => {
 
     try {
         const verified = jwt.verify(token, process.env.JWT_SECRET || "secret_key_123");
-        req.user = verified;
+
+        // Fetch fresh user from DB to ensure roles are up-to-date
+        // verified.id is standard, but some legacy tokens might have _id or userId. 
+        // Let's handle common cases or stick to what authController signs.
+        const userId = verified.id || verified._id || verified.userId;
+        const user = await User.findById(userId).select('-password');
+
+        if (!user) {
+            return res.status(401).json({ message: "User not found" });
+        }
+
+        req.user = user; // Now req.user is the full Mongoose document
         next();
     } catch (error) {
+        console.error("Token Verification Error:", error.message);
         res.status(403).json({ message: "Invalid Token" });
     }
 };

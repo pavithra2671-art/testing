@@ -35,7 +35,7 @@ export const createMessage = async (req, res) => {
 
         const newMessage = new Message({
             content,
-            sender: req.user._id, // Use _id for consistency in TM
+            sender: req.user.id || req.user._id, // Handle both id (JWT) and _id (mongoose object)
             channel: channelId,
             type: type || 'text',
             fileUrl: fileUrl || ''
@@ -88,7 +88,7 @@ export const createMessage = async (req, res) => {
                 // Create Log Message
                 const logMsg = new Message({
                     content: `${req.user.name}||${sourceChannelName}||${content}`, // Delimiter
-                    sender: req.user._id,
+                    sender: req.user.id || req.user._id,
                     channel: logChannel._id,
                     type: 'offline_log'
                 });
@@ -97,7 +97,7 @@ export const createMessage = async (req, res) => {
                 const logData = {
                     _id: logMsg._id.toString(),
                     content: logMsg.content,
-                    sender: { name: req.user.name, _id: req.user._id },
+                    sender: { name: req.user.name, _id: req.user.id || req.user._id },
                     channel: logChannel._id.toString(),
                     createdAt: logMsg.createdAt,
                     type: 'offline_log'
@@ -111,8 +111,10 @@ export const createMessage = async (req, res) => {
 
         res.json(messageData);
     } catch (err) {
-        console.error("Create Message Error", err);
-        res.status(500).send('Server Error');
+        console.error("Create Message Error Full Object:", JSON.stringify(err, Object.getOwnPropertyNames(err)));
+        console.error("Create Message Error Message:", err.message);
+        console.error("Create Message Error Stack:", err.stack);
+        res.status(500).json({ message: 'Server Error', error: err.message });
     }
 };
 

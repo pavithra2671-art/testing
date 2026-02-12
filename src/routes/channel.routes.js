@@ -6,7 +6,9 @@ import {
     deleteChannel,
     renameChannel,
     addMember,
-    removeMember
+    removeMember,
+    triggerDepartmentSync,
+    getChannelByTaskId
 } from '../controllers/channelController.js';
 
 const router = express.Router();
@@ -28,5 +30,11 @@ router.post('/:id/members', verifyToken, addMember);
 
 // DELETE remove member (Super Admin / Manager)
 router.delete('/:id/members/:userId', verifyToken, removeMember);
+
+// POST Manual Sync (Admin only)
+router.post('/sync', verifyToken, triggerDepartmentSync);
+
+// GET channel by Task ID
+router.get('/task/:taskId', verifyToken, getChannelByTaskId);
 
 export default router;

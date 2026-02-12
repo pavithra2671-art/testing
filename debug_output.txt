@@ -1,37 +1,18 @@
-Connected to DB
+DB Connected
+--- User Details ---
+ID: 6986ece8c988502a3ac5dd72
+Name: GOKULAKANNAN
+Role (Array?): ["Full Stack Developer"]
+Designation: Junior
+Email: dms18.fds@gmail.com
 
---- Recent 5 Tasks ---
+--- Channel 'Dept-Full Stack Developer' ---
+ID: 698d7acd353ca55a0a88260d
+Type: Private
+AllowedUsers Count: 8
 
-Task: task manager 2
-  ID: 6986c5030ec9f9a2b3094169
-  AssignType: Single
-  Assignee (Raw): ["6985e88c41bb1976a56c5368"]
-  Status: Pending
-  AssignedTo (Accepted): []
+*** Is User Member? true ***
 
-Task: task manager
-  ID: 6986c2f73fd540466a741b92
-  AssignType: Single
-  Assignee (Raw): ["6985e88c41bb1976a56c5368"]
-  Status: Pending
-  AssignedTo (Accepted): []
-
-Task: gokulakannanp003@gmail.com
-  ID: 6985f2a8b28136f35bc2c9f4
-  AssignType: Single
-  Assignee (Raw): ["6985e88c41bb1976a56c5368"]
-  Status: Pending
-  AssignedTo (Accepted): []
-
-Task: testing
-  ID: 6985ed37f8f8f39f10520137
-  AssignType: Single
-  Assignee (Raw): ["6985e88c41bb1976a56c5368"]
-  Status: Pending
-  AssignedTo (Accepted): []
-
---- Some Employees ---
-User: Saarathi, ID: 6985c1f3952fbc9fc0f0d1ec, Role: Admin
-User: Gokul, ID: 6985c388952fbc9fc0f0d20b, Role: User
-User: HARI, ID: 6985cecdcb6933a55c7bf94b, Role: User
-User: GOKULA KANNAN , ID: 6985e88c41bb1976a56c5368, Role: Full Stack Developer
+--- Testing getChannels Query ---
+Visible Channels:
+- Dept-Full Stack Developer (Private)

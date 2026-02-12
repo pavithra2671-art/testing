@@ -12,6 +12,10 @@ const channelSchema = new mongoose.Schema({
     // For Private channels
     allowedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
 
+    // Link to Task
+    taskId: { type: mongoose.Schema.Types.ObjectId, ref: 'Task' },
+    projectId: { type: String },
+
     // For Hierarchy (Branches)
     parent: { type: mongoose.Schema.Types.ObjectId, ref: 'Channel', default: null },
 

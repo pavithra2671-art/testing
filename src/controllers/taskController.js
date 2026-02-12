@@ -1,6 +1,7 @@
 import Task from "../models/Task.js";
 import User from "../models/User.js";
 import WorkLog from "../models/WorkLog.js";
+import Channel from "../models/Channel.js";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
@@ -39,6 +40,12 @@ export const createTask = async (req, res) => {
             parsedRoles = roles;
         }
 
+        // Ensure array
+        if (!Array.isArray(parsedRoles)) parsedRoles = [];
+        // Filter out empty/invalid values from roles
+        parsedRoles = parsedRoles.filter(r => r && r !== "" && r !== "null" && r !== "undefined");
+
+
         // Parse assignee (similar to roles, to handle FormData stringification)
         let parsedAssignee = [];
         if (typeof assignee === 'string') {
@@ -68,6 +75,12 @@ export const createTask = async (req, res) => {
             }
         }
 
+        // Ensure array (JSON.parse("null") returns null)
+        if (!Array.isArray(parsedProjectLead)) parsedProjectLead = [];
+        // Filter out empty strings for ObjectIds to avoid CastError
+        parsedProjectLead = parsedProjectLead.filter(id => id && id !== "" && id !== "null" && id !== "undefined");
+
+
         // Handle assignedBy (User ID)
         let parsedAssignedBy = req.body.assignedBy;
         if (parsedAssignedBy === "" || parsedAssignedBy === "null" || parsedAssignedBy === "undefined") {
@@ -87,6 +100,11 @@ export const createTask = async (req, res) => {
                 parsedDepartment = req.body.department;
             }
         }
+
+        // Ensure array
+        if (!Array.isArray(parsedDepartment)) parsedDepartment = [];
+        // Filter out empty values
+        parsedDepartment = parsedDepartment.filter(d => d && d !== "" && d !== "null" && d !== "undefined");
 
         // Handle teamLead (Optional ObjectId)
         let parsedTeamLead = req.body.teamLead;
@@ -108,10 +126,6 @@ export const createTask = async (req, res) => {
         } else {
             targetAssignee = [];
         }
-
-        console.log("Creating Task Request Body:", req.body);
-        console.log("Assignee Raw:", assignee);
-        console.log("Calculated Targets (targetAssignee):", targetAssignee);
 
         const newTask = new Task({
             projectName,
@@ -312,6 +326,80 @@ export const respondToTask = async (req, res) => {
                     employeeId: userId,
                     employeeName: user ? user.name : "Employee"
                 });
+            }
+
+            // --- AUTO CREATE CHANNEL LOGIC ---
+
+            try {
+                // 1. Identify Department (Parent Channel)
+                let parentChannel = null;
+                if (task.department && task.department.length > 0) {
+                    const deptName = task.department[0]; // Primary Dept
+
+                    // Try to find the Department channel
+                    parentChannel = await Channel.findOne({ name: deptName });
+
+                    if (!parentChannel) {
+                    }
+
+                    // 2. Define Members
+                    // User (Acceptor)
+                    const memberIds = [userId];
+
+                    // Admin & Super Admin (Always added?) 
+                    // Let's fetch them to be safe, or just rely on them being "Global" admins?
+                    // Private channels need explicit allowedUsers.
+                    const admins = await User.find({ role: { $in: ['Super Admin', 'Admin'] } }).select('_id');
+                    admins.forEach(a => {
+                        if (!memberIds.includes(a._id.toString())) memberIds.push(a._id.toString());
+                    });
+
+                    // Team Lead
+                    if (task.teamLead && !memberIds.includes(task.teamLead.toString())) {
+                        memberIds.push(task.teamLead.toString());
+                    }
+
+                    // Project Lead
+                    if (task.projectLead && Array.isArray(task.projectLead)) {
+                        task.projectLead.forEach(pl => {
+                            if (!memberIds.includes(pl.toString())) memberIds.push(pl.toString());
+                        });
+                    }
+
+                    // Assigned By
+                    if (task.assignedBy && !memberIds.includes(task.assignedBy.toString())) {
+                        memberIds.push(task.assignedBy.toString());
+                    }
+
+                    // 3. Create/Find Channel
+                    const channelName = task.projectName || task.taskTitle;
+
+                    // Check if exists for this Task ID
+                    let taskChannel = await Channel.findOne({ taskId: task._id });
+
+                    if (!taskChannel) {
+                        taskChannel = new Channel({
+                            name: channelName,
+                            type: 'Private',
+                            parent: parentChannel ? parentChannel._id : null,
+                            taskId: task._id,
+                            allowedUsers: memberIds,
+                            projectId: task.projectName
+                        });
+                        await taskChannel.save();
+
+                        // Emit join event? or let frontend handle it via "newChannel"
+                        if (io) {
+                            io.emit("newChannel", taskChannel); // Custom event or reuse logic
+                        }
+                    } else {
+                        // Update members if needed?
+                        // For now, assume creation is enough.
+                    }
+                }
+            } catch (channelError) {
+                console.error("Error auto-creating task channel:", channelError);
+                // Don't fail the response, just log it.
             }
 
             return res.json({ message: "Task accepted successfully" });
@@ -520,6 +608,27 @@ export const updateChatTopic = async (req, res) => {
         res.json(task);
     } catch (error) {
         console.error("Error updating chat topic:", error);
+        res.status(500).json({ message: "Server Error" });
+    }
+};
+
+// @desc    Get Single Task by ID
+// @route   GET /api/tasks/:id
+// @access  Public
+export const getTaskById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const task = await Task.findById(id)
+            .populate("assignedBy", "name")
+            .populate("projectLead", "name")
+            .populate("teamLead", "name");
+
+        if (!task) {
+            return res.status(404).json({ message: "Task not found" });
+        }
+        res.json(task);
+    } catch (error) {
+        console.error("Error fetching task:", error);
         res.status(500).json({ message: "Server Error" });
     }
 };

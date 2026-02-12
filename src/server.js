@@ -59,6 +59,11 @@ app.use((req, res, next) => {
 });
 app.use(express.json());
 
+// Request Logger
+app.use((req, res, next) => {
+  next();
+});
+
 // Store io instance in app
 app.set("io", io);
 
@@ -91,15 +96,12 @@ app.use("/api/upload", uploadRoutes);
 
 // Socket.IO Connection Handler
 io.on("connection", (socket) => {
-  console.log(`User Connected: ${socket.id}`);
 
   socket.on("join_channel", (channelId) => {
     socket.join(channelId);
-    console.log(`User ${socket.id} joined channel: ${channelId}`);
   });
 
   socket.on("disconnect", () => {
-    console.log("User Disconnected", socket.id);
   });
 });
 

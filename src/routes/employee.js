@@ -1,6 +1,7 @@
 import express from "express";
 import bcrypt from "bcryptjs";
 import User from "../models/User.js";
+import { syncDepartmentChannels } from "../controllers/channelController.js";
 
 const router = express.Router();
 
@@ -73,6 +74,9 @@ router.post("/add", async (req, res) => {
             password: hashedPassword,
         });
 
+        // Trigger Channel Sync
+        await syncDepartmentChannels();
+
         res.status(210).json({ // Changed to 210 to indicate resource created
             message: `Employee added successfully. Generated ID: ${newEmployeeId}`,
             user: {
@@ -129,6 +133,9 @@ router.patch("/update", async (req, res) => {
         if (!user) {
             return res.status(404).json({ message: "Employee not found" });
         }
+
+        // Trigger Channel Sync
+        await syncDepartmentChannels();
 
         res.json({
             message: "Role/Designation updated successfully",

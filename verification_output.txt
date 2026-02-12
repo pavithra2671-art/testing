@@ -1,0 +1,45 @@
+--- DEBUG: Found 19 Users ---
+----------------------------
+Starting Manual Sync...
+Sync Finished.
+--- Verified Department Channels ---
+- Dept-Admin & Co (Members: 5)
+- Dept-Project Manager (Members: 6)
+- Dept-SM Designer (Members: 9)
+- Dept-Website Developer (Members: 7)
+- Dept-SM SEO  Specialist (Members: 7)
+- Dept-SM Developer (Members: 10)
+- Dept-Full Stack Developer (Members: 8)
+----------------------------------
+--- DEBUG: Found 19 Users ---
+----------------------------
+Starting Manual Sync...
+Sync Finished.
+--- Verified Department Channels ---
+- Dept-Admin & Co (Members: 5)
+- Dept-Project Manager (Members: 6)
+- Dept-SM Designer (Members: 9)
+- Dept-Website Developer (Members: 7)
+- Dept-SM SEO  Specialist (Members: 7)
+- Dept-SM Developer (Members: 10)
+- Dept-Full Stack Developer (Members: 8)
+----------------------------------
+--- DEBUG: Found 19 Users ---
+----------------------------
+Starting Manual Sync...
+Sync Finished.
+--- Verified Department Channels ---
+- Dept-Admin & Co (Members: 5)
+- Dept-Project Manager (Members: 6)
+- Dept-SM Designer (Members: 9)
+- Dept-Website Developer (Members: 7)
+- Dept-SM SEO  Specialist (Members: 7)
+- Dept-SM Developer (Members: 10)
+- Dept-Full Stack Developer (Members: 8)
+----------------------------------
+--- DEBUG: Found 19 Users ---
+----------------------------
+Starting Manual Sync...
+Sync Finished.
+--- Verified Department Channels ---
+----------------------------------
