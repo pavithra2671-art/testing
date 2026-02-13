@@ -20,7 +20,9 @@ export const createWorkLog = async (req, res) => {
             logEndDate,
             taskOwner,
             taskType,
-            timeAutomation
+            timeAutomation,
+            logType, // Added logType
+            assignedBy // Added assignedBy
         } = req.body;
 
         // Files
@@ -65,7 +67,9 @@ export const createWorkLog = async (req, res) => {
             taskNo,
             taskOwner,
             taskType,
-            timeAutomation
+            timeAutomation,
+            logType, // Added logType
+            assignedBy // Added assignedBy
         });
 
         res.status(201).json({
@@ -94,6 +98,13 @@ const normalizeDate = (dateStr) => {
     return dateStr; // Return original if unknown format
 };
 
+// Helper to getting role from map
+const getRole = (name, userMap) => {
+    if (!name) return "N/A";
+    const role = userMap.get(name.trim().toLowerCase());
+    return role && role.length > 0 ? role.join(", ") : "N/A"; // Handle array or string
+};
+
 // @desc    Get Logs by Employee
 // @route   GET /api/work-logs/employee/:id
 // @access  Public
@@ -101,6 +112,10 @@ export const getWorkLogsByEmployee = async (req, res) => {
     try {
         // Fetch the user to get their name
         const user = await User.findById(req.params.id);
+
+        // Fetch all users to build a role map for owners/assigners
+        const allUsers = await User.find({}, "name role");
+        const userMap = new Map(allUsers.map(u => [u.name.trim().toLowerCase(), u.role]));
 
         if (!user) {
             // Fallback if user not found, though unlikely if auth is working
@@ -116,7 +131,7 @@ export const getWorkLogsByEmployee = async (req, res) => {
                 { taskOwner: { $regex: new RegExp(`^${user.name}$`, "i") } },
                 { "Task Owner": { $regex: new RegExp(`^${user.name}$`, "i") } }
             ]
-        }).sort({ createdAt: -1 });
+        }).sort({ createdAt: -1 }).populate("employeeId", "name email role");
 
         // Normalize logs for frontend (map CSV fields to schema fields if missing)
         const normalizedLogs = logs.map(log => {
@@ -130,10 +145,19 @@ export const getWorkLogsByEmployee = async (req, res) => {
                 finalDate = logObj.createdAt.toISOString().split('T')[0];
             }
 
+            const taskOwnerName = logObj.taskOwner || logObj["Task Owner"];
+            const assignedByName = logObj.assignedBy;
+
+            // Resolve Employee Name/Role from populated employeeId if available, else fallback to current user
+            // This is crucial if the log was created by someone else but matches the current user as taskOwner
+            const empName = logObj.employeeId?.name || user.name;
+            const empRole = logObj.employeeId?.role;
+            const empRoleStr = empRole && empRole.length > 0 ? empRole.join(", ") : "N/A";
+
             return {
                 ...logObj,
                 date: finalDate, // Normalize date here
-                taskOwner: logObj.taskOwner || logObj["Task Owner"],
+                taskOwner: taskOwnerName,
                 projectName: logObj.projectName || logObj["Project Name"],
                 taskNo: logObj.taskNo || logObj["Task No"],
                 startTime: logObj.startTime || logObj["Start Time"],
@@ -141,7 +165,11 @@ export const getWorkLogsByEmployee = async (req, res) => {
                 description: logObj.description || logObj["Task Description"],
                 taskType: logObj.taskType || logObj["Task Type"],
                 timeAutomation: logObj.timeAutomation || logObj["Time Estimaion"],
-                status: logObj.status || logObj["Status"]
+                status: logObj.status || logObj["Status"],
+                employeeName: empName, // Attach resolved employee name
+                employeeRole: empRoleStr,  // Attach resolved employee role
+                taskOwnerRole: getRole(taskOwnerName, userMap),
+                assignedByRole: getRole(assignedByName, userMap)
             };
         });
 
@@ -156,6 +184,10 @@ export const getWorkLogsByEmployee = async (req, res) => {
 // @access  Public (Should be Admin protected in production)
 export const getAllWorkLogs = async (req, res) => {
     try {
+        // Fetch all users to build a role map for owners/assigners
+        const allUsers = await User.find({}, "name role");
+        const userMap = new Map(allUsers.map(u => [u.name.trim().toLowerCase(), u.role]));
+
         // Populate employeeId to get name and email
         const logs = await WorkLog.find({})
             .sort({ createdAt: -1 })
@@ -173,10 +205,17 @@ export const getAllWorkLogs = async (req, res) => {
                 finalDate = logObj.createdAt.toISOString().split('T')[0];
             }
 
+            const taskOwnerName = logObj.taskOwner || logObj["Task Owner"];
+            const assignedByName = logObj.assignedBy;
+
+            // For admin check, employeeId is populated
+            const empRole = logObj.employeeId?.role;
+            const employeeRoleStr = empRole && empRole.length > 0 ? empRole.join(", ") : "N/A";
+
             return {
                 ...logObj,
                 date: finalDate, // Normalize date here
-                taskOwner: logObj.taskOwner || logObj["Task Owner"],
+                taskOwner: taskOwnerName,
                 projectName: logObj.projectName || logObj["Project Name"],
                 taskNo: logObj.taskNo || logObj["Task No"],
                 startTime: logObj.startTime || logObj["Start Time"],
@@ -184,7 +223,10 @@ export const getAllWorkLogs = async (req, res) => {
                 description: logObj.description || logObj["Task Description"],
                 taskType: logObj.taskType || logObj["Task Type"],
                 timeAutomation: logObj.timeAutomation || logObj["Time Estimaion"],
-                status: logObj.status || logObj["Status"]
+                status: logObj.status || logObj["Status"],
+                employeeRole: employeeRoleStr,
+                taskOwnerRole: getRole(taskOwnerName, userMap),
+                assignedByRole: getRole(assignedByName, userMap)
             };
         });
 
@@ -405,15 +447,19 @@ export const getFilterOptions = async (req, res) => {
         const types = await WorkLog.distinct("taskType");
         const legacyTypes = await WorkLog.distinct("Task Type");
 
+        const assignedBy = await WorkLog.distinct("assignedBy");
+
         // Merge and deduplicate
         const uniqueProjects = [...new Set([...projects, ...legacyProjects])].filter(Boolean).sort();
         const uniqueOwners = [...new Set([...owners, ...legacyOwners])].filter(Boolean).sort();
         const uniqueTypes = [...new Set([...types, ...legacyTypes])].filter(Boolean).sort();
+        const uniqueAssignedBy = [...new Set(assignedBy)].filter(Boolean).sort();
 
         res.json({
             projects: uniqueProjects,
             owners: uniqueOwners,
-            types: uniqueTypes
+            types: uniqueTypes,
+            assignedBy: uniqueAssignedBy
         });
     } catch (error) {
         console.error("Error fetching filter options:", error);

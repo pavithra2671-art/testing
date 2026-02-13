@@ -4,7 +4,7 @@ const systemOptionSchema = new mongoose.Schema({
     category: {
         type: String,
         required: true,
-        enum: ["department", "designation", "workType", "Project", "Owner", "Type"], // Updated to match usage in options.js
+        enum: ["department", "designation", "workType", "Project", "Owner", "Type", "AssignedBy"], // Updated to match usage in options.js
     },
     value: {
         type: String,

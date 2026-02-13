@@ -13,6 +13,7 @@ import seedSuperAdmin from "./seedSuperAdmin.js";
 import path from "path";
 import { fileURLToPath } from "url";
 import { createServer } from "http";
+import { syncDepartmentChannels } from "./controllers/channelController.js";
 import { Server } from "socket.io";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -23,6 +24,11 @@ const httpServer = createServer(app);
 
 connectDB().then(() => {
   seedSuperAdmin();
+  syncDepartmentChannels().then(() => {
+    httpServer.listen(5000, () =>
+      console.log("🚀 Server running on port 5000")
+    );
+  });
 });
 
 const allowedOrigins = [
@@ -110,6 +116,4 @@ io.on("connection", (socket) => {
 // Serve uploads folder
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
-httpServer.listen(5000, () =>
-  console.log("🚀 Server running on port 5000")
-);
+// Server started inside connectDB to ensure DB is ready

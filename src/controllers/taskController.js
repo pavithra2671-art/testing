@@ -127,6 +127,21 @@ export const createTask = async (req, res) => {
             targetAssignee = [];
         }
 
+        // --- DUPLICATE CHECK ---
+        const existingTask = await Task.findOne({
+            projectName: projectName,
+            taskTitle: taskTitle,
+            status: { $ne: "Completed" } // Optional: Allow re-creating if previous one is completed?
+            // tailored for "prevent accidental double click" - usually means same active task.
+        });
+
+        if (existingTask) {
+            return res.status(400).json({
+                success: false,
+                message: "A task with this Title already exists in this Project."
+            });
+        }
+
         const newTask = new Task({
             projectName,
             taskTitle,
@@ -332,6 +347,17 @@ export const respondToTask = async (req, res) => {
 
             try {
                 // 1. Identify Department (Parent Channel)
+                // 2. Define Members (Fetch Admins first for reuse)
+                const memberIds = [userId];
+                const admins = await User.find({ role: { $in: ['Super Admin', 'Admin'] } }).select('_id');
+                const adminIds = admins.map(a => a._id.toString());
+
+                // Add admins to memberIds
+                adminIds.forEach(id => {
+                    if (!memberIds.includes(id)) memberIds.push(id);
+                });
+
+                // 1. Identify Department (Parent Channel)
                 let parentChannel = null;
                 if (task.department && task.department.length > 0) {
                     const deptName = task.department[0]; // Primary Dept
@@ -340,62 +366,66 @@ export const respondToTask = async (req, res) => {
                     parentChannel = await Channel.findOne({ name: deptName });
 
                     if (!parentChannel) {
+                        // Create Parent Channel (Department)
+                        // Add current user to department channel as well
+                        const initialMembers = [...adminIds];
+                        if (!initialMembers.includes(userId)) initialMembers.push(userId);
+
+                        parentChannel = new Channel({
+                            name: deptName,
+                            type: 'Private', // Valid enum value
+                            allowedUsers: initialMembers,
+                            description: `${deptName} Department Channel`
+                        });
+                        await parentChannel.save();
+
+                        if (io) io.emit("newChannel", parentChannel);
                     }
+                }
 
-                    // 2. Define Members
-                    // User (Acceptor)
-                    const memberIds = [userId];
+                // ... Continue with sub-channel members ...
 
-                    // Admin & Super Admin (Always added?) 
-                    // Let's fetch them to be safe, or just rely on them being "Global" admins?
-                    // Private channels need explicit allowedUsers.
-                    const admins = await User.find({ role: { $in: ['Super Admin', 'Admin'] } }).select('_id');
-                    admins.forEach(a => {
-                        if (!memberIds.includes(a._id.toString())) memberIds.push(a._id.toString());
+                // Team Lead
+                if (task.teamLead && !memberIds.includes(task.teamLead.toString())) {
+                    memberIds.push(task.teamLead.toString());
+                }
+
+                // Project Lead
+                if (task.projectLead && Array.isArray(task.projectLead)) {
+                    task.projectLead.forEach(pl => {
+                        if (!memberIds.includes(pl.toString())) memberIds.push(pl.toString());
                     });
+                }
 
-                    // Team Lead
-                    if (task.teamLead && !memberIds.includes(task.teamLead.toString())) {
-                        memberIds.push(task.teamLead.toString());
+                // Assigned By
+                if (task.assignedBy && !memberIds.includes(task.assignedBy.toString())) {
+                    memberIds.push(task.assignedBy.toString());
+                }
+
+                // 3. Create/Find Channel
+                const channelName = task.projectName || task.taskTitle;
+
+                // Check if exists for this Task ID
+                let taskChannel = await Channel.findOne({ taskId: task._id });
+
+                if (!taskChannel) {
+                    taskChannel = new Channel({
+                        name: channelName,
+                        type: 'Private',
+                        parent: parentChannel ? parentChannel._id : null,
+                        taskId: task._id,
+                        allowedUsers: memberIds,
+                        projectId: task.projectName
+                    });
+                    await taskChannel.save();
+
+                    // Emit join event? or let frontend handle it via "newChannel"
+                    if (io) {
+                        io.emit("newChannel", taskChannel); // Custom event or reuse logic
                     }
-
-                    // Project Lead
-                    if (task.projectLead && Array.isArray(task.projectLead)) {
-                        task.projectLead.forEach(pl => {
-                            if (!memberIds.includes(pl.toString())) memberIds.push(pl.toString());
-                        });
-                    }
-
-                    // Assigned By
-                    if (task.assignedBy && !memberIds.includes(task.assignedBy.toString())) {
-                        memberIds.push(task.assignedBy.toString());
-                    }
-
-                    // 3. Create/Find Channel
-                    const channelName = task.projectName || task.taskTitle;
-
-                    // Check if exists for this Task ID
-                    let taskChannel = await Channel.findOne({ taskId: task._id });
-
-                    if (!taskChannel) {
-                        taskChannel = new Channel({
-                            name: channelName,
-                            type: 'Private',
-                            parent: parentChannel ? parentChannel._id : null,
-                            taskId: task._id,
-                            allowedUsers: memberIds,
-                            projectId: task.projectName
-                        });
-                        await taskChannel.save();
-
-                        // Emit join event? or let frontend handle it via "newChannel"
-                        if (io) {
-                            io.emit("newChannel", taskChannel); // Custom event or reuse logic
-                        }
-                    } else {
-                        // Update members if needed?
-                        // For now, assume creation is enough.
-                    }
+                } else {
+                    // Update members if needed?
+                    // For now, assume creation is enough.
                 }
             } catch (channelError) {
                 console.error("Error auto-creating task channel:", channelError);
@@ -478,7 +508,7 @@ export const updateTaskStatus = async (req, res) => {
             return res.status(400).json({ message: "Invalid status" });
         }
 
-        const task = await Task.findById(id);
+        const task = await Task.findById(id).populate('assignedBy', 'name');
         if (!task) {
             return res.status(404).json({ message: "Task not found" });
         }
@@ -495,7 +525,14 @@ export const updateTaskStatus = async (req, res) => {
 
             if (userId) {
                 try {
+                    // Fetch user for name (Employee)
+                    const user = await User.findById(userId);
+                    const employeeName = user ? user.name : "Unknown Employee";
+
                     const durationStr = formatDuration(activeSession.duration);
+                    // Ensure we have a valid task assigner name
+                    const assignerName = task.assignedBy ? task.assignedBy.name : "System";
+
                     const newLog = new WorkLog({
                         employeeId: userId,
                         taskTitle: task.taskTitle,
@@ -507,10 +544,12 @@ export const updateTaskStatus = async (req, res) => {
                         timeAutomation: durationStr,
                         status: status,
                         description: task.description || "Auto-logged task session",
-                        taskNo: task.reworkCount,
-                        taskOwner: task.assignedBy ? task.assignedBy.toString() : "System",
+                        taskNo: task.taskNo || task.reworkCount || 0, // Fallback safe
+                        taskOwner: employeeName,   // Mapped to Employee Name
+                        assignedBy: assignerName,  // Mapped to Assigner Name
                         taskType: "Task",
-                        reworkCount: task.reworkCount
+                        reworkCount: task.reworkCount,
+                        logType: "Main Task" // Explicitly set as Main Task
                     });
                     await newLog.save();
                 } catch (logError) {

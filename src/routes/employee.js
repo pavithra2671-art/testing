@@ -138,7 +138,7 @@ router.patch("/update", async (req, res) => {
         await syncDepartmentChannels();
 
         res.json({
-            message: "Role/Designation updated successfully",
+            message: `Employee ${employeeId} updated successfully`,
             user,
         });
     } catch (error) {

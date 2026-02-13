@@ -6,14 +6,12 @@ import WorkLog from "../models/WorkLog.js";
 // @access  Private
 export const getOptions = async (req, res) => {
     try {
-        const userId = req.user.id;
+        console.log("[getOptions] Request user:", req.user ? req.user._id : "No User");
+        const userId = req.user.id || req.user._id;
         const { category } = req.query; // optional filter
 
         const query = {
-            $or: [
-                { createdBy: null }, // Global
-                { createdBy: userId } // User's own
-            ]
+            createdBy: userId
         };
 
         if (category) {
@@ -21,18 +19,6 @@ export const getOptions = async (req, res) => {
         }
 
         const systemOptions = await SystemOption.find(query).sort({ value: 1 });
-
-        // Also fetch from WorkLogs for legacy support (aggregated)
-        // We only want unique string values that are NOT in systemOptions
-        // Let's fetch distinct values and merge.
-        let legacyValues = [];
-        if (category === 'Project') {
-            legacyValues = await WorkLog.distinct("projectName", { employeeId: userId });
-        } else if (category === 'Owner') {
-            legacyValues = await WorkLog.distinct("taskOwner"); // Owners are global usually?
-        } else if (category === 'Type') {
-            legacyValues = await WorkLog.distinct("taskType");
-        }
 
         // Map system options
         const formattedOptions = systemOptions.map(opt => ({
@@ -42,21 +28,6 @@ export const getOptions = async (req, res) => {
             isCustom: !!opt.createdBy, // True if created by user
             canDelete: !!opt.createdBy // User can only delete their own
         }));
-
-        // Add legacy (string only) if not present
-        const systemValuesInfo = new Set(formattedOptions.map(o => o.value));
-
-        legacyValues.forEach(val => {
-            if (val && !systemValuesInfo.has(val)) {
-                formattedOptions.push({
-                    _id: null,
-                    value: val,
-                    category, // might be undefined if not filtered
-                    isCustom: false,
-                    canDelete: false
-                });
-            }
-        });
 
         res.json(formattedOptions);
     } catch (error) {
@@ -70,8 +41,9 @@ export const getOptions = async (req, res) => {
 // @access  Private
 export const addOption = async (req, res) => {
     try {
+        console.log("[addOption] Body:", req.body);
         const { category, value } = req.body;
-        const userId = req.user.id;
+        const userId = req.user.id || req.user._id;
 
         if (!category || !value) {
             return res.status(400).json({ message: "Category and Value are required" });
@@ -104,6 +76,9 @@ export const addOption = async (req, res) => {
 
     } catch (error) {
         console.error("Error adding option:", error);
+        if (error.name === 'ValidationError') {
+            return res.status(400).json({ message: error.message });
+        }
         res.status(500).json({ message: "Server Error" });
     }
 };

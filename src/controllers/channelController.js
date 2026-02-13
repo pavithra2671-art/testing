@@ -24,20 +24,16 @@ export const getChannels = async (req, res) => {
         // Admin sees all? Or just what they are in? 
         // Usually Admins might see all, but for clutter reduction, let's stick to assigned + global.
         // But Super Admin might want to see everything?
-        if (user.role === 'Super Admin') {
+
+        console.log(`[getChannels] User: ${user.name}, ID: ${user._id}, Roles: ${JSON.stringify(user.role)}`);
+
+        if (user.role.includes('Super Admin') || user.role.includes('Admin')) {
+            console.log(`[getChannels] Granting full access to Admin/Super Admin: ${user.name}`);
             query = {}; // See all
-        } else if (user.role === 'Admin') {
-            // Admins should see all Task channels + their own allowed channels
-            query = {
-                $or: [
-                    { type: 'Global' },
-                    { type: 'Private', allowedUsers: userId },
-                    { taskId: { $exists: true } }
-                ]
-            };
         }
 
         const channels = await Channel.find(query).sort({ createdAt: 1 });
+        console.log(`[getChannels] Found ${channels.length} channels for user ${user.name}`);
         res.json(channels);
     } catch (error) {
         console.error("Error fetching channels:", error);
@@ -180,7 +176,7 @@ export const syncDepartmentChannels = async () => {
             // Handle array of roles or single string
             const roles = Array.isArray(u.role) ? u.role : [u.role];
             roles.forEach(role => {
-                if (role && role !== 'User' && role !== 'Admin' && role !== 'Super Admin' && role !== 'Manager') {
+                if (role && !['User', 'Admin', 'Super Admin', 'Manager'].includes(role)) {
                     if (!deptMap[role]) deptMap[role] = [];
                     deptMap[role].push(u._id);
                 }
@@ -214,7 +210,10 @@ export const syncDepartmentChannels = async () => {
 
             // 4. Update Members
             // Always add Admins/Super Admins?
-            const admins = users.filter(u => u.role === 'Admin' || u.role === 'Super Admin' || u.role === 'Manager').map(u => u._id);
+            const admins = users.filter(u => {
+                const roles = Array.isArray(u.role) ? u.role : [u.role];
+                return roles.some(r => ['Admin', 'Super Admin', 'Manager'].includes(r));
+            }).map(u => u._id);
 
             // Merge memberIds + admins
             const targetMembers = [...new Set([...memberIds, ...admins])].map(id => id.toString());
@@ -228,13 +227,11 @@ export const syncDepartmentChannels = async () => {
             if (isDifferent) {
                 channel.allowedUsers = targetMembers;
                 if (channel.type !== 'Private') {
-                    // If it was Global, maybe we don't restrict? 
-                    // But if we want to enforce dept logic, we might need it to be private or just ignore allowedUsers if types is Global.
-                    // Let's force type to Private if it matches a Dept?
-                    // channel.type = 'Private'; 
+                    // Force type to Private for Department channels to ensure they appear in queries
+                    channel.type = 'Private';
                 }
                 await channel.save();
-                console.log(`[Sync] Updated members for ${deptName}`);
+                console.log(`[Sync] Updated members and type for ${deptName}`);
             }
         }
         console.log("[Sync] Department Channel Sync Complete.");

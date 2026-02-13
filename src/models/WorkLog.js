@@ -60,6 +60,13 @@ const workLogSchema = new mongoose.Schema(
         timeAutomation: {
             type: String,
         },
+        logType: {
+            type: String,
+            default: "Main Task" // Default to Main Task for backward compatibility or auto-logs
+        },
+        assignedBy: {
+            type: String
+        },
         // CSV Imported Fields
         "Date": String, // Capitalized Date from CSV
         "Task Owner": String,

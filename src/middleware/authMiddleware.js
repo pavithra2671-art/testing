@@ -36,7 +36,9 @@ const verifyToken = async (req, res, next) => {
 
 const authorizeRole = (...allowedRoles) => {
     return (req, res, next) => {
-        if (!req.user || !allowedRoles.includes(req.user.role)) {
+        // Check if user has ANY of the allowed roles
+        const hasRole = req.user && req.user.role.some(r => allowedRoles.includes(r));
+        if (!hasRole) {
             return res.status(403).json({ message: `Access Denied: Requires one of ${allowedRoles.join(', ')} role` });
         }
         next();
