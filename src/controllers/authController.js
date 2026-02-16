@@ -3,14 +3,7 @@ import jwt from "jsonwebtoken";
 
 export const generateChatToken = async (req, res) => {
     try {
-        // Assuming middleware has already populated req.user or we use session
-        // Since original auth.js didn't use JWT middleware on all routes, we might need to rely on req.user if available
-        // OR if this route is called from frontend with some ID. 
-        // BUT safest is to assume the user is logged in and we have their ID from a trusted source (e.g. session or existing simple token)
-
-        // However, looking at authMiddleware.js, it verifies a token. 
-        // If the frontend has a token for Task Manager (even if not fully used everywhere), we can use it.
-        // Let's assume the request comes authenticated via the existing authMiddleware.
+        // Assume request comes authenticated via existing authMiddleware
 
         const user = await User.findById(req.user.id);
         if (!user) {

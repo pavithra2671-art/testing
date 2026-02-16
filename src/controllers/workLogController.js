@@ -308,9 +308,6 @@ export const updateWorkLog = async (req, res) => {
         if (startTime !== undefined) updateData.startTime = startTime;
         if (endTime !== undefined) updateData.endTime = endTime;
 
-        // If we have both start and end time (and endTime is not null), calculate duration
-        // Only if not in Rework mode? User said "initial time... duration automatically calculated".
-        // If we represent Rework duration separately, base duration is just task duration.
         if (newStartTime && newEndTime) {
             const durationMins = calculateDurationMinutes(newStartTime, newEndTime);
             updateData.duration = formatDurationStr(durationMins);
@@ -329,8 +326,6 @@ export const updateWorkLog = async (req, res) => {
 
         if (status === 'Rework' && log.status !== 'Rework') {
             // Start New Rework Session
-            // Unless we are just clicking "Rework" on an already Rework task? 
-            // Frontend sends 'Rework' when checking confirming popup.
 
             // Check if we already have an active session for this (avoid duplicates if frontend retries)
             if (!activeSession) {
@@ -371,12 +366,6 @@ export const updateWorkLog = async (req, res) => {
                 let activeDurationMs = 0;
                 let lastStart = reStartTime;
                 const events = activeSession.events || [];
-
-                // Iterate events to subtract hold times
-                // Logic: Start -> Hold (Active), Hold -> Resume (Paused), ...
-                // Simple greedy: 
-                // We are active from lastStart UNTIL Hold.
-                // We resume active from Resume.
 
                 let isHeld = false;
 

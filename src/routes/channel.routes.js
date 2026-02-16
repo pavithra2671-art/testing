@@ -7,6 +7,7 @@ import {
     renameChannel,
     addMember,
     removeMember,
+    removeMembers,
     triggerDepartmentSync,
     getChannelByTaskId
 } from '../controllers/channelController.js';
@@ -27,6 +28,9 @@ router.put('/:id', verifyToken, renameChannel);
 
 // POST add member (Super Admin / Manager)
 router.post('/:id/members', verifyToken, addMember);
+
+// POST remove members (bulk)
+router.post('/:id/members/remove', verifyToken, removeMembers);
 
 // DELETE remove member (Super Admin / Manager)
 router.delete('/:id/members/:userId', verifyToken, removeMember);

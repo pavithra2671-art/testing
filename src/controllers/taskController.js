@@ -112,19 +112,12 @@ export const createTask = async (req, res) => {
             parsedTeamLead = null;
         }
 
-        // --- STRICT MODE ASSIGNMENT LOGIC ---
-        // 1. Single: assignee = [UserIDs]
-        // 2. Department: assignee = [DeptNames]
-        // 3. Overall: assignee = []
-
         let targetAssignee = [];
 
         if (assignType === "Single" || assignType === "Department") {
             targetAssignee = parsedAssignee;
         } else if (assignType === "Overall") {
             targetAssignee = []; // Everyone gets it
-        } else {
-            targetAssignee = [];
         }
 
         // --- DUPLICATE CHECK ---
@@ -209,10 +202,6 @@ export const getInvitations = async (req, res) => {
         // 4. Overall: assignType="Overall"
 
         // Mapping Departments to Roles
-        // One-to-one mapping since we are selecting Roles directly as Departments
-        // Mapping Departments to Roles
-        // One-to-one mapping since we are selecting Roles directly as Departments
-        // Update to include observed roles like "Graphic Designer"
         const deptRoleMap = {
             "Designer": ["Designer", "Graphic Designer", "UI/UX Designer"],
             "Social Media": ["Social Media", "Social Media Manager"],
@@ -222,7 +211,6 @@ export const getInvitations = async (req, res) => {
             "Sales": ["Sales", "Sales Executive"],
             "Graphic Designer": ["Graphic Designer", "Designer"] // direct mapping if Dept is named "Graphic Designer"
         };
-        // We filter out tasks the user has *already declined*.
         // We filter out tasks the user has *already declined*.
         const allPending = await Task.find({
             status: { $in: ["Pending", "In Progress"] },
@@ -288,29 +276,8 @@ export const respondToTask = async (req, res) => {
         }
 
         if (status === "Accepted") {
-            // Check if already assigned
             if (task.assignedTo && task.assignedTo.length > 0) {
-                // Logic change: If Multi-assign is strictly disallowed on same task for some reason? 
-                // User request said: "When an employee accepts...". 
-                // Existing logic: task.assignedTo = userId.
-                // With Arrays (Multi-Select), assignedTo is an array.
-                // If assignType is Single or Department, multiple people can accept DIFFERENT tasks? 
-                // OR is it one shared task? 
-                // "Department" tasks: Created ONE task doc, sent to ALL. 
-                // If User A accepts, it becomes "In Progress". 
-                // Does User B still see it? 
-                // Usually Department tasks are "First to claim gets it" OR "Everyone gets a copy".
-                // Current DB structure: ONE task. 
-                // If User A accepts, task.assignedTo = [User A]. Status = "In Progress".
-                // Others will see "assignedTo" is not NULL (and not them), so they won't see it pending.
-                // This matches "First to Claim".
-
-                // However, we updated Schema to array. 
-                // `task.assignedTo` is now `[{ type: ObjectId }]`.
-                // We should push to it? Or replace if it was empty?
-                // If it was "Department", it was empty. 
-                // If one person accepts, do we want others to join? 
-                // Assuming "First Claim" for now to keep it simple as per "assignedTo != null" check in getInvitations.
+                // Check if already assigned mechanics if needed
             }
 
             // Check if user already in list (for idempotency)
@@ -569,20 +536,7 @@ export const updateTaskStatus = async (req, res) => {
             });
         }
 
-        // Note: For "Hold", we already ended the active session above. 
-        // We can optionally add a "Hold" session just for audit trail if needed,
-        // but user asked for "Hold time: ...", which implies tracking WHEN it went on hold.
-        // A closed session with endTime tracks the work period. 
-        // The gap between sessions effectively tracks the "Hold" period.
-        // But let's check user req: "Hold time: 11:15 PM... Start time 2: 11:30 PM"
-
-        // Actually, if we just end the session, we have the records.
-        // Session 1: Start 11:02 - End 11:15 (Duration 13 mins). Status: In Progress.
-        // Gaps are Hold time.
-
-        // However, if user wants explicit "Hold" logs in DB?
-        // Let's stick to tracking "Work Sessions". 
-        // A "Hold" status update just closes the current work session.
+        // Note: For "Hold", we already ended the active session above.
 
         task.status = status;
         await task.save();
@@ -672,9 +626,6 @@ export const getTaskById = async (req, res) => {
     }
 };
 
-// @desc    Download File
-// @route   GET /api/tasks/download/:filename
-// @access  Public
 // @desc    Get Tasks for a specific Employee (Admin View)
 // @route   GET /api/tasks/employee/:employeeId
 // @access  Public (Should be Admin)

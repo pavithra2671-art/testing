@@ -1,5 +1,6 @@
 import Message from '../models/Message.js';
 import Channel from '../models/Channel.js';
+import mongoose from 'mongoose';
 
 // Get messages for a channel
 export const getMessages = async (req, res) => {
@@ -18,7 +19,8 @@ export const getMessages = async (req, res) => {
             channel: msg.channel,
             createdAt: msg.createdAt, // Frontend needs raw date for parsing
             type: msg.type,
-            fileUrl: msg.fileUrl
+            fileUrl: msg.fileUrl,
+            readBy: msg.readBy
         }));
 
         res.json(formattedMessages);
@@ -38,7 +40,8 @@ export const createMessage = async (req, res) => {
             sender: req.user.id || req.user._id, // Handle both id (JWT) and _id (mongoose object)
             channel: channelId,
             type: type || 'text',
-            fileUrl: fileUrl || ''
+            fileUrl: fileUrl || '',
+            readBy: [req.user.id || req.user._id]
         });
 
         await newMessage.save();
@@ -53,7 +56,8 @@ export const createMessage = async (req, res) => {
             createdAt: newMessage.createdAt,
             type: newMessage.type,
             fileUrl: newMessage.fileUrl,
-            localId: localId // Pass back to client for dedup
+            localId: localId, // Pass back to client for dedup
+            readBy: newMessage.readBy
         };
 
         // Emit via Socket.io
@@ -90,7 +94,8 @@ export const createMessage = async (req, res) => {
                     content: `${req.user.name}||${sourceChannelName}||${content}`, // Delimiter
                     sender: req.user.id || req.user._id,
                     channel: logChannel._id,
-                    type: 'offline_log'
+                    type: 'offline_log',
+                    readBy: [req.user.id || req.user._id]
                 });
                 await logMsg.save();
 
@@ -100,7 +105,8 @@ export const createMessage = async (req, res) => {
                     sender: { name: req.user.name, _id: req.user.id || req.user._id },
                     channel: logChannel._id.toString(),
                     createdAt: logMsg.createdAt,
-                    type: 'offline_log'
+                    type: 'offline_log',
+                    readBy: logMsg.readBy
                 };
                 if (io) io.to(logChannel._id.toString()).emit('message', logData);
 
@@ -115,6 +121,50 @@ export const createMessage = async (req, res) => {
         console.error("Create Message Error Message:", err.message);
         console.error("Create Message Error Stack:", err.stack);
         res.status(500).json({ message: 'Server Error', error: err.message });
+    }
+};
+
+// ... (getSessionMessages, deleteMessage, exportMessages exist)
+
+// Mark channel as read
+export const markAsRead = async (req, res) => {
+    try {
+        const { channelId } = req.params;
+        const userId = req.user.id || req.user._id;
+
+        await Message.updateMany(
+            { channel: channelId, readBy: { $ne: userId } },
+            { $addToSet: { readBy: userId } }
+        );
+
+        res.json({ success: true });
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).send('Server Error');
+    }
+};
+
+// Get Unread Counts
+export const getUnreadCounts = async (req, res) => {
+    try {
+        const userId = req.user.id || req.user._id;
+
+        // Aggregate unread messages by channel
+        const unreadCounts = await Message.aggregate([
+            { $match: { readBy: { $ne: new mongoose.Types.ObjectId(userId) } } },
+            { $group: { _id: "$channel", count: { $sum: 1 } } }
+        ]);
+
+        const formattedCounts = {};
+        unreadCounts.forEach(item => {
+            formattedCounts[item._id] = item.count;
+        });
+
+        res.json(formattedCounts);
+    } catch (err) {
+        console.error(err.message);
+        console.error(err.stack); // Added stack for deeper debug if needed
+        res.status(500).send('Server Error');
     }
 };
 

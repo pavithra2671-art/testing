@@ -5,10 +5,18 @@ import {
     createMessage,
     getSessionMessages,
     deleteMessage,
-    exportMessages
+    exportMessages,
+    markAsRead,
+    getUnreadCounts
 } from '../controllers/messageController.js';
 
 const router = express.Router();
+
+// GET unread counts (Must be before /:channelId)
+router.get('/unread/counts', verifyToken, getUnreadCounts);
+
+// MARK channel as read
+router.put('/read/:channelId', verifyToken, markAsRead);
 
 // GET messages for a channel
 router.get('/:channelId', verifyToken, getMessages);

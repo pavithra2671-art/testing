@@ -19,6 +19,6 @@ const systemOptionSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // Composite unique index to allow same value in different categories
-systemOptionSchema.index({ category: 1, value: 1 }, { unique: true });
+systemOptionSchema.index({ category: 1, value: 1, createdBy: 1 }, { unique: true });
 
 export default mongoose.model("SystemOption", systemOptionSchema);

@@ -4,7 +4,7 @@ const channelSchema = new mongoose.Schema({
     name: { type: String, required: true },
     type: {
         type: String,
-        enum: ['Global', 'Team', 'Private'],
+        enum: ['Global', 'Team', 'Private', 'DM', 'Department'],
         required: true
     },
     // For Team based channels
@@ -19,7 +19,10 @@ const channelSchema = new mongoose.Schema({
     // For Hierarchy (Branches)
     parent: { type: mongoose.Schema.Types.ObjectId, ref: 'Channel', default: null },
 
-    description: String
+    description: String,
+
+    // Manual Creation Flag
+    isManual: { type: Boolean, default: false }
 }, { timestamps: true });
 
 export default mongoose.model('Channel', channelSchema);

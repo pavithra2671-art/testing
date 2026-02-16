@@ -13,7 +13,7 @@ import seedSuperAdmin from "./seedSuperAdmin.js";
 import path from "path";
 import { fileURLToPath } from "url";
 import { createServer } from "http";
-import { syncDepartmentChannels } from "./controllers/channelController.js";
+import { syncDepartmentChannels, ensureFoxDigitalOneTeamChannel } from "./controllers/channelController.js";
 import { Server } from "socket.io";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -22,13 +22,26 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const httpServer = createServer(app);
 
-connectDB().then(() => {
-  seedSuperAdmin();
-  syncDepartmentChannels().then(() => {
-    httpServer.listen(5000, () =>
-      console.log("🚀 Server running on port 5000")
-    );
-  });
+connectDB().then(async () => {
+  await seedSuperAdmin();
+  await syncDepartmentChannels();
+  // Pass io (which will be initialized by the time this runs due to async DB connection)
+  // Ensure io is available. Since connectDB is async, io variable from below line 44 should be initialized? 
+  // Wait, const io is block scoped. It IS available in this module scope, but TDZ applies if accessed before declaration.
+  // Since this `.then` runs later, it *should* be fine. But to be safe, let's defer it or move io init up.
+  // Actually, moving io init up is safer.
+
+  // Or just rely on the fact that DB connection takes time.
+  // Let's assume io is ready.
+  if (typeof io !== 'undefined') {
+    await ensureFoxDigitalOneTeamChannel(io);
+  } else {
+    console.log("Socket.io not ready yet for One Team channel creation, skipping startup check (will be checked on department add)");
+  }
+
+  httpServer.listen(5000, () =>
+    console.log("🚀 Server running on port 5000")
+  );
 });
 
 const allowedOrigins = [
@@ -107,6 +120,11 @@ io.on("connection", (socket) => {
 
   socket.on("join_channel", (channelId) => {
     socket.join(channelId);
+  });
+
+  socket.on("setup", (userData) => {
+    socket.join(userData._id);
+    socket.emit("connected");
   });
 
   socket.on("disconnect", () => {

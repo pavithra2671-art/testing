@@ -8,7 +8,8 @@ const messageSchema = new mongoose.Schema({
         type: String,
         default: 'text'
     },
-    fileUrl: { type: String } // For images/voice notes
+    fileUrl: { type: String }, // For images/voice notes
+    readBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
 }, { timestamps: true });
 
 export default mongoose.model('Message', messageSchema);

@@ -16,7 +16,10 @@ export const getChannels = async (req, res) => {
         let query = {
             $or: [
                 { type: 'Global' },
+                { name: 'Offline History' }, // Explicitly allow Offline History for everyone
                 { type: 'Private', allowedUsers: userId },
+                { type: 'Department', allowedUsers: userId },
+                { type: 'DM', allowedUsers: userId },
                 // { type: 'Team', allowedTeams: user.teamId } // If teams exist
             ]
         };
@@ -46,16 +49,57 @@ export const getChannels = async (req, res) => {
 // @access  Private (Super Admin / Admin)
 export const createChannel = async (req, res) => {
     try {
-        const { name, type, parentId } = req.body;
+        const { name, type, parentId, allowedUsers } = req.body;
 
         // Simple validation
         if (!name) return res.status(400).json({ message: "Channel name is required" });
+
+        // Special handling for DM creation
+        if (type === 'DM') {
+            const { targetUserId } = req.body;
+            if (!targetUserId) return res.status(400).json({ message: "Target user required for DM" });
+
+            // Check if DM exists between these 2 users
+            const existingDM = await Channel.findOne({
+                type: 'DM',
+                allowedUsers: { $all: [req.user.id, targetUserId] }
+            });
+
+            if (existingDM) {
+                return res.json(existingDM);
+            }
+
+            const newDM = new Channel({
+                name: 'dm-' + Date.now(), // Placeholder name, frontend resolves real name
+                type: 'DM',
+                allowedUsers: [req.user.id, targetUserId]
+            });
+            await newDM.save();
+
+            const io = req.app.get("io");
+            if (io) {
+                io.to(req.user.id).emit("newChannel", newDM);
+                io.to(targetUserId).emit("newChannel", newDM);
+            }
+            return res.status(201).json(newDM);
+        }
+
+        // Prepare initial members
+        let initialMembers = [req.user.id];
+        if (allowedUsers && Array.isArray(allowedUsers)) {
+            allowedUsers.forEach(uid => {
+                if (uid && !initialMembers.includes(uid)) {
+                    initialMembers.push(uid);
+                }
+            });
+        }
 
         const newChannel = new Channel({
             name,
             type: type || 'Global',
             parent: parentId || null,
-            allowedUsers: [req.user.id] // Creator is always a member
+            allowedUsers: initialMembers, // Creator + Selected Members
+            isManual: true // Explicitly mark as manually created
         });
 
         await newChannel.save();
@@ -72,10 +116,22 @@ export const createChannel = async (req, res) => {
 
 // @desc    Delete a channel
 // @route   DELETE /api/channels/:id
-// @access  Private (Super Admin)
+// @access  Private (Super Admin / Admin / Manager)
 export const deleteChannel = async (req, res) => {
     try {
         const { id } = req.params;
+
+        // AUTH CHECK
+        const user = req.user;
+        const isAuthorized = user.role.includes('Super Admin') || user.role.includes('Admin') || user.role.includes('Manager');
+
+        if (!isAuthorized) {
+            return res.status(403).json({ message: "Not authorized to delete channels" });
+        }
+
+        const channel = await Channel.findById(id);
+        if (!channel) return res.status(404).json({ message: "Channel not found" });
+
         await Channel.findByIdAndDelete(id);
 
         // Also delete children?
@@ -111,28 +167,69 @@ export const renameChannel = async (req, res) => {
     }
 };
 
-// @desc    Add Member to Private Channel
+// @desc    Add Member(s) to Private Channel
 // @route   POST /api/channels/:id/members
 // @access  Private (Manager/Admin)
 export const addMember = async (req, res) => {
     try {
         const { id } = req.params;
-        const { userId } = req.body;
+        const { userId, userIds } = req.body; // Support single or multiple
 
         const channel = await Channel.findById(id);
         if (!channel) return res.status(404).json({ message: "Channel not found" });
 
-        if (!channel.allowedUsers.includes(userId)) {
-            channel.allowedUsers.push(userId);
-            await channel.save();
+        const usersToAdd = userIds || [userId];
+        let addedCount = 0;
+
+        for (const uid of usersToAdd) {
+            if (uid && !channel.allowedUsers.includes(uid)) {
+                channel.allowedUsers.push(uid);
+                addedCount++;
+            }
         }
 
-        const io = req.app.get("io");
-        if (io) io.emit("channelUpdated", channel);
+        if (addedCount > 0) {
+            await channel.save();
+            const io = req.app.get("io");
+            if (io) {
+                io.emit("channelUpdated", channel);
+
+                // Explicitly notify added users so they see it as a "new" channel
+                usersToAdd.forEach(uid => {
+                    io.to(uid).emit("newChannel", channel);
+                });
+            }
+        }
 
         res.json(channel);
     } catch (error) {
         console.error("Error adding member:", error);
+        res.status(500).json({ message: "Server Error" });
+    }
+};
+
+// @desc    Remove Member(s) from Private Channel
+// @route   POST /api/channels/:id/members/remove
+// @access  Private (Manager/Admin)
+export const removeMembers = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { userIds } = req.body;
+
+        const channel = await Channel.findById(id);
+        if (!channel) return res.status(404).json({ message: "Channel not found" });
+
+        if (userIds && Array.isArray(userIds)) {
+            channel.allowedUsers = channel.allowedUsers.filter(uid => !userIds.includes(uid.toString()));
+            await channel.save();
+
+            const io = req.app.get("io");
+            if (io) io.emit("channelUpdated", channel);
+        }
+
+        res.json(channel);
+    } catch (error) {
+        console.error("Error removing members:", error);
         res.status(500).json({ message: "Server Error" });
     }
 };
@@ -270,3 +367,42 @@ export const getChannelByTaskId = async (req, res) => {
         res.status(500).json({ message: "Server Error" });
     }
 };
+
+/**
+ * Ensures the "Fox Digital One Team" global channel exists.
+ * Should be called when a department is created or system initialized.
+ * @param {Server} io - Socket.io instance
+ */
+export const ensureFoxDigitalOneTeamChannel = async (io) => {
+    try {
+        const channelName = "Fox Digital One Team";
+        let channel = await Channel.findOne({ name: channelName });
+
+        if (!channel) {
+            console.log(`[OneTeam] Creating global channel: ${channelName}`);
+            channel = new Channel({
+                name: channelName,
+                type: 'Global',
+                description: 'Official Company-Wide Channel',
+                allowedUsers: [] // Accessible by all due to 'Global' type
+            });
+            await channel.save();
+
+            if (io) {
+                io.emit("newChannel", channel);
+            }
+        } else {
+            // Ensure strict compliance with requirements (Global)
+            if (channel.type !== 'Global') {
+                console.log(`[OneTeam] Correcting channel type to Global`);
+                channel.type = 'Global';
+                await channel.save();
+                if (io) io.emit("channelUpdated", channel);
+            }
+        }
+        return channel;
+    } catch (error) {
+        console.error("Error ensuring Fox Digital One Team channel:", error);
+    }
+};
+

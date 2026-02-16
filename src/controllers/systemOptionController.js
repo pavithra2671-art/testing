@@ -1,5 +1,6 @@
 import SystemOption from "../models/SystemOption.js";
 import WorkLog from "../models/WorkLog.js";
+import { ensureFoxDigitalOneTeamChannel } from "./channelController.js";
 
 // @desc    Get All Options (Global + User Specific + Legacy from WorkLogs)
 // @route   GET /api/system-options
@@ -25,8 +26,8 @@ export const getOptions = async (req, res) => {
             _id: opt._id,
             value: opt.value,
             category: opt.category,
-            isCustom: !!opt.createdBy, // True if created by user
-            canDelete: !!opt.createdBy // User can only delete their own
+            isCustom: true,
+            canDelete: true
         }));
 
         res.json(formattedOptions);
@@ -49,15 +50,15 @@ export const addOption = async (req, res) => {
             return res.status(400).json({ message: "Category and Value are required" });
         }
 
-        // Check availability (global or own)
+        // Check availability (user specific)
         const existing = await SystemOption.findOne({
             category,
             value,
-            $or: [{ createdBy: null }, { createdBy: userId }]
+            createdBy: userId
         });
 
         if (existing) {
-            return res.status(400).json({ message: "Option already exists" });
+            return res.status(400).json({ message: "Option already exists in your list." });
         }
 
         const newOption = await SystemOption.create({
@@ -65,6 +66,13 @@ export const addOption = async (req, res) => {
             value,
             createdBy: userId
         });
+
+        // If a Department is created, ensure the company-wide channel exists
+        if (category === 'department') {
+            const io = req.app.get("io");
+            // Run asynchronously to not block response
+            ensureFoxDigitalOneTeamChannel(io).catch(err => console.error("Error creating One Team channel", err));
+        }
 
         res.status(201).json({
             _id: newOption._id,
@@ -76,6 +84,9 @@ export const addOption = async (req, res) => {
 
     } catch (error) {
         console.error("Error adding option:", error);
+        if (error.code === 11000) {
+            return res.status(400).json({ message: "Option already exists." });
+        }
         if (error.name === 'ValidationError') {
             return res.status(400).json({ message: error.message });
         }
@@ -98,7 +109,7 @@ export const deleteOption = async (req, res) => {
             return res.status(403).json({ message: "Not authorized to delete this option" });
         }
 
-        await option.deleteOne();
+        await SystemOption.findByIdAndDelete(req.params.id);
 
         res.json({ message: "Option removed" });
     } catch (error) {
