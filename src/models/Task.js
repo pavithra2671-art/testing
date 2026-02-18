@@ -105,7 +105,11 @@ const taskSchema = new mongoose.Schema(
             endTime: Date,
             status: String,
             reworkVersion: Number,
-            duration: Number
+            duration: Number,
+            deduction: {
+                type: Number,
+                default: 0
+            }
         }],
     },
     { timestamps: true }

@@ -28,10 +28,14 @@ router.get("/all", async (req, res) => {
             }
         });
 
-        // If empty, seed default values (optional, but good for first run)
-        if (options.length === 0) {
+        // Check if core categories are missing
+        const hasDepartments = grouped.department.length > 0;
+        const hasDesignations = grouped.designation.length > 0;
+        const hasWorkTypes = grouped.workType.length > 0;
+
+        if (!hasDepartments || !hasDesignations || !hasWorkTypes) {
             const defaults = [
-                // Departments (UI Department -> DB User.role)
+                // Departments
                 { category: "department", value: "SM Developer" },
                 { category: "department", value: "SM SEO Specialist" },
                 { category: "department", value: "SM Designer" },
@@ -39,7 +43,7 @@ router.get("/all", async (req, res) => {
                 { category: "department", value: "Full Stack Developer" },
                 { category: "department", value: "Sales Team" },
 
-                // Designations (UI Role -> DB User.designation)
+                // Designations
                 { category: "designation", value: "Junior" },
                 { category: "designation", value: "Senior" },
                 { category: "designation", value: "Tech Lead" },
@@ -51,14 +55,21 @@ router.get("/all", async (req, res) => {
                 { category: "workType", value: "Remote" },
             ];
 
-            await SystemOption.insertMany(defaults);
+            // Filter out existing ones to avoid duplicates
+            // We use a Set for O(1) lookup: "category:value"
+            const existingSet = new Set(options.map(o => `${o.category}:${o.value}`));
+            const toInsert = defaults.filter(d => !existingSet.has(`${d.category}:${d.value}`));
 
-            // Re-populate grouped after seeding
-            defaults.forEach(opt => {
-                if (grouped[opt.category]) {
-                    grouped[opt.category].push({ value: opt.value, label: opt.value });
-                }
-            });
+            if (toInsert.length > 0) {
+                await SystemOption.insertMany(toInsert);
+
+                // Add newly inserted to grouped response immediately
+                toInsert.forEach(opt => {
+                    if (grouped[opt.category]) {
+                        grouped[opt.category].push({ value: opt.value, label: opt.value });
+                    }
+                });
+            }
         }
 
         res.json(grouped);

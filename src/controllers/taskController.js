@@ -120,20 +120,19 @@ export const createTask = async (req, res) => {
             targetAssignee = []; // Everyone gets it
         }
 
-        // --- DUPLICATE CHECK ---
-        const existingTask = await Task.findOne({
-            projectName: projectName,
-            taskTitle: taskTitle,
-            status: { $ne: "Completed" } // Optional: Allow re-creating if previous one is completed?
-            // tailored for "prevent accidental double click" - usually means same active task.
-        });
+        // --- DUPLICATE CHECK REMOVED ---
+        // const existingTask = await Task.findOne({
+        //     projectName: projectName,
+        //     taskTitle: taskTitle,
+        //     status: { $ne: "Completed" } 
+        // });
 
-        if (existingTask) {
-            return res.status(400).json({
-                success: false,
-                message: "A task with this Title already exists in this Project."
-            });
-        }
+        // if (existingTask) {
+        //     return res.status(400).json({
+        //         success: false,
+        //         message: "A task with this Title already exists in this Project."
+        //     });
+        // }
 
         const newTask = new Task({
             projectName,
@@ -193,8 +192,6 @@ export const getInvitations = async (req, res) => {
             return res.status(404).json({ message: "User not found" });
         }
 
-
-
         // Logic to find matching tasks
         // 1. Single: assignedTo == userId
         // 2. Department: assignType="Department" && assignee maps to user.role
@@ -218,6 +215,12 @@ export const getInvitations = async (req, res) => {
         })
             .populate("projectLead", "name")
             .populate("teamLead", "name");
+
+        // --- SUPER ADMIN VISIBILITY ---
+        // If user is Super Admin, they see ALL pending/in-progress tasks
+        if (user.role && (user.role.includes("Super Admin") || user.role === "Super Admin")) {
+            return res.json(allPending);
+        }
 
         const myInvitations = allPending.filter(task => {
             const isAssigned = (task.assignedTo || []).some(id => id.toString() === userId.toString());
@@ -276,27 +279,45 @@ export const respondToTask = async (req, res) => {
         }
 
         if (status === "Accepted") {
-            if (task.assignedTo && task.assignedTo.length > 0) {
-                // Check if already assigned mechanics if needed
+            // METADATA: ATOMIC FIX START
+            // Use findOneAndUpdate to atomically checking if user is already assigned
+            // We only update IF the user is NOT in assignedTo
+            const updatedTask = await Task.findOneAndUpdate(
+                {
+                    _id: id,
+                    assignedTo: { $ne: userId } // Condition: User NOT already assigned
+                },
+                {
+                    $push: {
+                        assignedTo: userId,
+                        sessions: {
+                            startTime: new Date(),
+                            endTime: null,
+                            status: "In Progress",
+                            reworkVersion: 0
+                        }
+                    },
+                    $set: { status: "In Progress" }
+                },
+                { new: true } // Return the updated document
+            );
+
+            // If updatedTask is null, it means the condition failed (User already assigned or Task not found)
+            if (!updatedTask) {
+                // Check if task exists to differentiate between "Not Found" and "Already Assigned"
+                const taskExists = await Task.exists({ _id: id });
+                if (!taskExists) {
+                    return res.status(404).json({ message: "Task not found" });
+                }
+
+                // If task exists but wasn't updated, it means user was already assigned.
+                // We return success (idempotent) but DO NOT create a new session.
+                return res.json({ message: "Task already accepted" });
             }
 
-            // Check if user already in list (for idempotency)
-            const currentAssigned = task.assignedTo.map(id => id.toString());
-            if (!currentAssigned.includes(userId)) {
-                task.assignedTo.push(userId);
-            }
-
-            task.status = "In Progress";
-
-            // Start the first session
-            task.sessions.push({
-                startTime: new Date(),
-                endTime: null,
-                status: "In Progress",
-                reworkVersion: 0
-            });
-
-            await task.save();
+            // Continue with side effects (Socket.io, Channels) using the `updatedTask`
+            const task = updatedTask;
+            // METADATA: ATOMIC FIX END
 
             // Emit Event for Admin
             const user = await User.findById(userId);
@@ -495,6 +516,70 @@ export const updateTaskStatus = async (req, res) => {
                     // Fetch user for name (Employee)
                     const user = await User.findById(userId);
                     const employeeName = user ? user.name : "Unknown Employee";
+
+                    // --- QUICK TASK DEDUCTION LOGIC ---
+                    let deductionMs = 0;
+                    try {
+                        // Find Quick Tasks by this user that overlap with this session
+                        // Quick Tasks are WorkLogs with logType: "Quick"
+                        // Overlap: (StartA <= EndB) and (EndA >= StartB)
+
+                        // We need to compare times. Quick Tasks store Date as string "YYYY-MM-DD" and Times as "HH:MM".
+                        // Main Task session has full Date objects for startTime and now (endTime).
+
+                        const sessionDateStr = startTime.toISOString().split('T')[0];
+
+                        // Fetch Quick Tasks for this day
+                        const quickTasks = await WorkLog.find({
+                            employeeId: userId,
+                            date: sessionDateStr,
+                            logType: "Quick"
+                        });
+
+                        // Calculate overlapping duration
+                        quickTasks.forEach(qt => {
+                            if (qt.startTime && qt.endTime) {
+                                // Create Date objects for QT start/end
+                                const [qtStartH, qtStartM] = qt.startTime.split(':').map(Number);
+                                const [qtEndH, qtEndM] = qt.endTime.split(':').map(Number);
+
+                                const qtStart = new Date(startTime); // Copy date part from session start
+                                qtStart.setHours(qtStartH, qtStartM, 0, 0);
+
+                                const qtEnd = new Date(startTime);
+                                qtEnd.setHours(qtEndH, qtEndM, 0, 0);
+
+                                // Check overlap
+                                // Session: startTime to now
+                                // QT: qtStart to qtEnd
+                                const overlapStart = new Date(Math.max(startTime, qtStart));
+                                const overlapEnd = new Date(Math.min(now, qtEnd));
+
+                                if (overlapStart < overlapEnd) {
+                                    const overlapDuration = overlapEnd - overlapStart;
+                                    deductionMs += overlapDuration;
+                                }
+                            }
+                        });
+
+                        // Cap deduction to avoid negative duration
+                        if (deductionMs > activeSession.duration) {
+                            deductionMs = activeSession.duration;
+                        }
+
+                        // Store deduction in session
+                        activeSession.deduction = deductionMs;
+
+                        // UPDATE SESSION DURATION (Net Duration)
+                        // existing duration calc was: activeSession.duration = now - startTime;
+                        // Now we subtract deduction
+                        activeSession.duration = activeSession.duration - deductionMs;
+
+                    } catch (deductionError) {
+                        console.error("Error calculating deduction:", deductionError);
+                        // Fallback: Proceed with 0 deduction (original duration)
+                    }
+                    // --- END DEDUCTION LOGIC ---
 
                     const durationStr = formatDuration(activeSession.duration);
                     // Ensure we have a valid task assigner name

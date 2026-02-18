@@ -63,7 +63,31 @@ export const createMessage = async (req, res) => {
         // Emit via Socket.io
         const io = req.app.get('io');
         if (io) {
+            // 1. Emit to active viewers in the channel room
             io.to(channelId).emit('message', messageData);
+
+            // 2. Emit to members for notifications (even if not viewing)
+            try {
+                const channel = await Channel.findById(channelId);
+                if (channel) {
+                    // Global Channels -> Broadcast to everyone
+                    if (channel.type === 'Global' || channel.name === 'Fox Digital One Team') {
+                        io.to("global").emit('message', messageData);
+                    }
+                    // Private/Team/DM/Department -> Broadcast to specific members
+                    else {
+                        // If allowedUsers is populated, iterate
+                        if (channel.allowedUsers && channel.allowedUsers.length > 0) {
+                            channel.allowedUsers.forEach(uid => {
+                                // Don't emit back to sender? Frontend handles this check already.
+                                io.to(uid.toString()).emit('message', messageData);
+                            });
+                        }
+                    }
+                }
+            } catch (notifyErr) {
+                console.error("Notification emission error:", notifyErr);
+            }
         } else {
             console.warn("Socket.io not initialized on request");
         }

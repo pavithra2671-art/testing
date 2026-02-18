@@ -124,6 +124,7 @@ io.on("connection", (socket) => {
 
   socket.on("setup", (userData) => {
     socket.join(userData._id);
+    socket.join("global");
     socket.emit("connected");
   });
 

@@ -5,14 +5,21 @@ import { ensureFoxDigitalOneTeamChannel } from "./channelController.js";
 // @desc    Get All Options (Global + User Specific + Legacy from WorkLogs)
 // @route   GET /api/system-options
 // @access  Private
+// @desc    Get All Options (Global + User Specific + Legacy from WorkLogs)
+// @route   GET /api/system-options
+// @access  Private
 export const getOptions = async (req, res) => {
     try {
         console.log("[getOptions] Request user:", req.user ? req.user._id : "No User");
         const userId = req.user.id || req.user._id;
         const { category } = req.query; // optional filter
 
+        // User sees ONLY their own options + System defaults
         const query = {
-            createdBy: userId
+            $or: [
+                { createdBy: userId },
+                { createdBy: null }
+            ]
         };
 
         if (category) {
@@ -27,7 +34,8 @@ export const getOptions = async (req, res) => {
             value: opt.value,
             category: opt.category,
             isCustom: true,
-            canDelete: true
+            // Only creator can delete. System opts (null) cannot be deleted.
+            canDelete: opt.createdBy && opt.createdBy.toString() === userId.toString()
         }));
 
         res.json(formattedOptions);
@@ -50,15 +58,26 @@ export const addOption = async (req, res) => {
             return res.status(400).json({ message: "Category and Value are required" });
         }
 
-        // Check availability (user specific)
+        // Check availability (User's list + System Defaults)
         const existing = await SystemOption.findOne({
             category,
             value,
-            createdBy: userId
+            $or: [
+                { createdBy: userId },
+                { createdBy: null }
+            ]
         });
 
         if (existing) {
-            return res.status(400).json({ message: "Option already exists in your list." });
+            // Return existing option with success status so frontend uses it smoothly
+            return res.status(200).json({
+                _id: existing._id,
+                value: existing.value,
+                category: existing.category,
+                isCustom: true,
+                canDelete: existing.createdBy && existing.createdBy.toString() === userId.toString(),
+                message: "Option already exists."
+            });
         }
 
         const newOption = await SystemOption.create({
@@ -85,7 +104,18 @@ export const addOption = async (req, res) => {
     } catch (error) {
         console.error("Error adding option:", error);
         if (error.code === 11000) {
-            return res.status(400).json({ message: "Option already exists." });
+            // Handle Race Condition: Try to find the user's option
+            const retry = await SystemOption.findOne({ category, value, createdBy: userId });
+            if (retry) {
+                return res.status(200).json({
+                    _id: retry._id,
+                    value: retry.value,
+                    category: retry.category,
+                    isCustom: true,
+                    canDelete: true
+                });
+            }
+            return res.status(400).json({ message: "Option exists." });
         }
         if (error.name === 'ValidationError') {
             return res.status(400).json({ message: error.message });

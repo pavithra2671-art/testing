@@ -12,7 +12,7 @@ import { verifyToken } from "../middleware/authMiddleware.js";
 // SIGNUP
 router.post("/signup", async (req, res) => {
   try {
-    const { role, email, password } = req.body;
+    const { role, email, password, name, employeeId } = req.body;
 
     if (role === "Super Admin" || role === "Employee") {
       return res.status(403).json({ message: "Signup restricted for this role" });
@@ -29,6 +29,8 @@ router.post("/signup", async (req, res) => {
       role,
       email,
       password: hashedPassword,
+      name: name || "Unknown", // Fallback if missing
+      employeeId: employeeId || `EMP_${Date.now()}` // Fallback if missing
     });
 
     res.status(201).json({
