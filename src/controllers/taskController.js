@@ -468,9 +468,14 @@ export const getMyTasks = async (req, res) => {
     }
 };
 
-// Helper to format 24h time
+// Helper to format 24h time (IST)
 const formatTime24 = (date) => {
-    return date.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleTimeString('en-US', {
+        hour12: false,
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: "Asia/Kolkata"
+    });
 };
 
 // Helper to format duration
@@ -522,36 +527,45 @@ export const updateTaskStatus = async (req, res) => {
                     try {
                         // Find Quick Tasks by this user that overlap with this session
                         // Quick Tasks are WorkLogs with logType: "Quick"
-                        // Overlap: (StartA <= EndB) and (EndA >= StartB)
 
-                        // We need to compare times. Quick Tasks store Date as string "YYYY-MM-DD" and Times as "HH:MM".
-                        // Main Task session has full Date objects for startTime and now (endTime).
-
-                        const sessionDateStr = startTime.toISOString().split('T')[0];
+                        // 1. Get Session Date in IST (to match QT storage format)
+                        const sessionDateIST = startTime.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }); // YYYY-MM-DD
 
                         // Fetch Quick Tasks for this day
                         const quickTasks = await WorkLog.find({
                             employeeId: userId,
-                            date: sessionDateStr,
+                            date: sessionDateIST,
                             logType: "Quick"
                         });
 
                         // Calculate overlapping duration
                         quickTasks.forEach(qt => {
                             if (qt.startTime && qt.endTime) {
-                                // Create Date objects for QT start/end
+                                // QT Times are "HH:MM" in IST
                                 const [qtStartH, qtStartM] = qt.startTime.split(':').map(Number);
                                 const [qtEndH, qtEndM] = qt.endTime.split(':').map(Number);
 
-                                const qtStart = new Date(startTime); // Copy date part from session start
-                                qtStart.setHours(qtStartH, qtStartM, 0, 0);
+                                // Construct QT Date Objects relative to SESSION DATE
+                                // We need to convert Session Start (UTC) to IST components to align
+                                // But simpler: Construct a Date object that matches the "HH:MM" in the same timezone context as Session was converted?
+                                // NO. Session is UTC point in time. QT is "10:30" IST.
+                                // We must convert QT "10:30 IST" to UTC Point in Time to compare.
 
-                                const qtEnd = new Date(startTime);
-                                qtEnd.setHours(qtEndH, qtEndM, 0, 0);
+                                // APPROACH: Convert QT (IST String) -> UTC Timestamp
+                                // QT Date: sessionDateIST (YYYY-MM-DD)
+                                // QT Time: qt.startTime (HH:MM)
+                                // String: "YYYY-MM-DDTHH:MM:00+05:30"
+
+                                const qtStartISO = `${sessionDateIST}T${qt.startTime}:00+05:30`;
+                                const qtEndISO = `${sessionDateIST}T${qt.endTime}:00+05:30`;
+
+                                const qtStart = new Date(qtStartISO);
+                                const qtEnd = new Date(qtEndISO);
 
                                 // Check overlap
-                                // Session: startTime to now
-                                // QT: qtStart to qtEnd
+                                // Session: startTime to now (Both are UTC Date objects)
+                                // QT: qtStart to qtEnd (Now UTC Date objects)
+
                                 const overlapStart = new Date(Math.max(startTime, qtStart));
                                 const overlapEnd = new Date(Math.min(now, qtEnd));
 
@@ -754,6 +768,26 @@ export const getAllTasks = async (req, res) => {
         res.json(tasks);
     } catch (error) {
         console.error("Error fetching all tasks:", error);
+        res.status(500).json({ message: "Server Error" });
+    }
+};
+
+// @desc    Get Tasks Assigned By a User
+// @route   GET /api/tasks/assigned-by/:userId
+// @access  Public
+export const getTasksAssignedByUser = async (req, res) => {
+    try {
+        const { userId } = req.params;
+
+        const tasks = await Task.find({ assignedBy: userId })
+            .sort({ createdAt: -1 }) // Newest first
+            .populate("projectLead", "name")
+            .populate("teamLead", "name")
+            .populate("assignedBy", "name");
+
+        res.json(tasks);
+    } catch (error) {
+        console.error("Error fetching tasks assigned by user:", error);
         res.status(500).json({ message: "Server Error" });
     }
 };

@@ -8,6 +8,7 @@ import {
     downloadFile,
     getTasksByEmployee,
     getAllTasks,
+    getTasksAssignedByUser, // Import
     getDashboardStats,
     updateTaskStatus,
     reworkTask,
@@ -49,6 +50,7 @@ router.use("/:id/respond", (req, res, next) => {
 router.post("/:id/respond", respondToTask);
 router.get("/my-tasks", getMyTasks);
 router.get("/employee/:employeeId", getTasksByEmployee);
+router.get("/assigned-by/:userId", getTasksAssignedByUser); // New Route
 router.get("/all", getAllTasks);
 router.get("/stats", getDashboardStats);
 router.get("/download/:filename", downloadFile);
