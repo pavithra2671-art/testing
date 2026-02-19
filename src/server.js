@@ -104,6 +104,7 @@ import channelRoutes from "./routes/channel.routes.js";
 import messageRoutes from "./routes/message.routes.js";
 import uploadRoutes from "./routes/upload.routes.js";
 import SystemLog from "./models/SystemLog.js";
+import systemLogRoutes from "./routes/systemLog.js";
 
 app.use("/api/auth", authRoutes);
 app.use("/api/tasks", taskRoutes);
@@ -112,6 +113,7 @@ app.use("/api/work-logs", workLogRoutes);
 app.use("/api/leave", leaveRoutes);
 app.use("/api/attendance", attendanceRoutes);
 app.use("/api/options", optionRoutes);
+app.use("/api/system-logs", systemLogRoutes);
 
 // Chat Routes
 app.use("/api/channels", channelRoutes);
