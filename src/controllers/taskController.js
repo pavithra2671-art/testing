@@ -599,18 +599,26 @@ export const updateTaskStatus = async (req, res) => {
                     // Ensure we have a valid task assigner name
                     const assignerName = task.assignedBy ? task.assignedBy.name : "System";
 
+                    // Auto-generate Task No (Day-wise)
+                    const dateStr = now.toISOString().split('T')[0];
+                    const count = await WorkLog.countDocuments({
+                        date: dateStr,
+                        employeeId: userId
+                    });
+                    const nextTaskNo = count + 1;
+
                     const newLog = new WorkLog({
                         employeeId: userId,
                         taskTitle: task.taskTitle,
                         projectName: task.projectName,
-                        date: now.toISOString().split('T')[0],
+                        date: dateStr,
                         startTime: formatTime24(startTime),
                         endTime: formatTime24(now),
                         duration: durationStr,
                         timeAutomation: durationStr,
                         status: status,
                         description: task.description || "Auto-logged task session",
-                        taskNo: task.taskNo || task.reworkCount || 0, // Fallback safe
+                        taskNo: nextTaskNo,
                         taskOwner: employeeName,   // Mapped to Employee Name
                         assignedBy: assignerName,  // Mapped to Assigner Name
                         taskType: "Task",

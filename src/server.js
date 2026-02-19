@@ -15,6 +15,8 @@ import { fileURLToPath } from "url";
 import { createServer } from "http";
 import { syncDepartmentChannels, ensureFoxDigitalOneTeamChannel } from "./controllers/channelController.js";
 import { Server } from "socket.io";
+import os from "os";
+import axios from "axios";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -101,6 +103,7 @@ app.use((req, res, next) => {
 import channelRoutes from "./routes/channel.routes.js";
 import messageRoutes from "./routes/message.routes.js";
 import uploadRoutes from "./routes/upload.routes.js";
+import SystemLog from "./models/SystemLog.js";
 
 app.use("/api/auth", authRoutes);
 app.use("/api/tasks", taskRoutes);
@@ -136,3 +139,114 @@ io.on("connection", (socket) => {
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
 // Server started inside connectDB to ensure DB is ready
+
+// Cleanup old logs on startup (optional)
+const cleanupOldLogs = async () => {
+  try {
+    // Keep only the last 1000 logs or logs from the last 24 hours
+    // For now, let's just rely on the TTL index in the model, but we can also do a manual cleanup if needed
+    console.log("System Log cleanup initialized (handled by MongoDB TTL)");
+  } catch (error) {
+    console.error("Error cleaning up old logs:", error);
+  }
+};
+cleanupOldLogs();
+
+// Helper function to get IP address
+const getIPAddress = () => {
+  const interfaces = os.networkInterfaces();
+  const addresses = [];
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      // Skip internal (i.e. 127.0.0.1) and non-ipv4 addresses
+      if (iface.family === 'IPv4' && !iface.internal) {
+        addresses.push({ name, address: iface.address, mac: iface.mac });
+      }
+    }
+  }
+  return addresses;
+};
+
+let publicIP = null;
+
+const getPublicIP = async () => {
+  try {
+    const response = await axios.get('https://api.ipify.org?format=json');
+    publicIP = response.data.ip;
+  } catch (error) {
+    console.error("Error fetching public IP:", error.message);
+    publicIP = "Unavailable";
+  }
+};
+
+// Fetch Public IP once on startup
+getPublicIP();
+
+// Re-fetch Public IP every hour (optional, in case it changes)
+setInterval(getPublicIP, 3600000);
+
+setInterval(async () => {
+  const memory = process.memoryUsage();
+  const localIPs = getIPAddress();
+  console.log(`[${new Date().toISOString()}] System Stats:`);
+  console.log(`Hostname: ${os.hostname()}`);
+  console.log(`Public IP: ${publicIP || "Fetching..."}`);
+  if (localIPs.length > 0) {
+    console.log("Local IPs:");
+    localIPs.forEach(ip => console.log(`  - ${ip.name}: ${ip.address} (MAC: ${ip.mac})`));
+  } else {
+    console.log("Local IPs: 127.0.0.1 (Internal Only)");
+  }
+
+  console.log("RAM Usage:", {
+    rss: (memory.rss / 1024 / 1024).toFixed(2) + " MB",
+    heapTotal: (memory.heapTotal / 1024 / 1024).toFixed(2) + " MB",
+    heapUsed: (memory.heapUsed / 1024 / 1024).toFixed(2) + " MB",
+  });
+  console.log("----------------------------------------");
+
+  // Save to Database
+  try {
+    const newLog = new SystemLog({
+      hostname: os.hostname(),
+      publicIP: publicIP || "Unavailable",
+      localIPs: localIPs,
+      ramUsage: {
+        rss: (memory.rss / 1024 / 1024).toFixed(2) + " MB",
+        heapTotal: (memory.heapTotal / 1024 / 1024).toFixed(2) + " MB",
+        heapUsed: (memory.heapUsed / 1024 / 1024).toFixed(2) + " MB",
+      },
+    });
+    await newLog.save();
+  } catch (error) {
+    console.error("Error saving system log to DB:", error.message);
+  }
+
+}, 1000);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
