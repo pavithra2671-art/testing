@@ -46,20 +46,33 @@ connectDB().then(async () => {
   );
 });
 
+// we’ll whitelist known origins plus any Netlify preview URL
+// since the preview hostname changes per build we accept *.netlify.app
 const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:3000",
-  "https://loquacious-phoenix-c65c47.netlify.app",
-  "https://task-manager-fox-frontend.onrender.com",
+  "https://testing-7i84.onrender.com",              // deployed backend (for sanity checks)
   "https://foxtaskmanager.netlify.app",
-  "https://benevolent-gelato-1f2e01.netlify.app",
-  "https://taskmanagerfoxdms.netlify.app",
-  "http://localhost:5174"
+  // other fixed production hosts…
 ];
+
+// helper used by both Express and Socket.io
+function originValidator(origin, callback) {
+  if (!origin) return callback(null, true); // allow non-browser clients (curl, Postman)
+  const netlifyPattern = /https:\/\/.*\.netlify\.app$/;
+  if (
+    allowedOrigins.includes(origin) ||
+    netlifyPattern.test(origin)
+  ) {
+    callback(null, true);
+  } else {
+    callback(new Error("Not allowed by CORS"));
+  }
+}
 
 const io = new Server(httpServer, {
   cors: {
-    origin: allowedOrigins,
+    origin: originValidator,
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true,
     allowedHeaders: ["Content-Type", "Authorization"]
@@ -67,7 +80,7 @@ const io = new Server(httpServer, {
 });
 
 app.use(cors({
-  origin: allowedOrigins,
+  origin: originValidator,
   credentials: true
 }));
 
