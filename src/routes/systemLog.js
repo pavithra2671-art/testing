@@ -62,7 +62,7 @@ router.post("/client", verifyToken, async (req, res) => {
 // @route   GET /api/system-logs/clients/active
 // @desc    Get latest RAM usage of active clients (last 5 mins)
 // @access  Private (Admin/HR)
-router.get("/clients/active", verifyToken, authorizeRole("admin", "hr"), async (req, res) => {
+router.get("/clients/active", verifyToken, authorizeRole("Super Admin", "Admin", "admin", "HR", "hr"), async (req, res) => {
     try {
         const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
 
