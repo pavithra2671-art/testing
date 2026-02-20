@@ -165,7 +165,7 @@ app.get("/test", (req, res) => {
 app.get("/api/system-logs/latest", async (req, res) => {
   try {
     // Try to fetch from DB
-    const latestLog = await SystemLog.findOne().sort({ timestamp: -1 });
+    const latestLog = await SystemLog.findOne({ type: "server" }).sort({ timestamp: -1 });
     if (latestLog) {
       return res.json(latestLog);
     }
@@ -195,7 +195,7 @@ app.get("/api/system-logs/latest", async (req, res) => {
 
 app.get("/api/system-logs/history", async (req, res) => {
   try {
-    const logs = await SystemLog.find().sort({ timestamp: -1 }).limit(50);
+    const logs = await SystemLog.find({ type: "server" }).sort({ timestamp: -1 }).limit(50);
     res.json(logs);
   } catch (error) {
     console.error("Error fetching system log history:", error);
@@ -271,6 +271,7 @@ setInterval(async () => {
   // Save to Database
   try {
     const newLog = new SystemLog({
+      type: "server",
       hostname: os.hostname(),
       publicIP: publicIP || "Unavailable",
       localIPs: localIPs,

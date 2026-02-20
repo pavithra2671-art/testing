@@ -1,13 +1,21 @@
 import mongoose from "mongoose";
 
 const SystemLogSchema = new mongoose.Schema({
+    type: {
+        type: String,
+        enum: ["server", "client"],
+        default: "server",
+    },
+    userId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Employee",
+    },
+    userAgent: String,
     hostname: {
         type: String,
-        required: true,
     },
     publicIP: {
         type: String,
-        required: true,
     },
     localIPs: [
         {
