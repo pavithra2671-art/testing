@@ -28,6 +28,9 @@ const SystemLogSchema = new mongoose.Schema({
         rss: String,
         heapTotal: String,
         heapUsed: String,
+        jsHeapSizeLimit: String,
+        totalJSHeapSize: String,
+        usedJSHeapSize: String,
     },
     timestamp: {
         type: Date,

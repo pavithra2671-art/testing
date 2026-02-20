@@ -61,9 +61,13 @@ const allowedOrigins = [
 function originValidator(origin, callback) {
   if (!origin) return callback(null, true); // allow non-browser clients (curl, Postman)
   const netlifyPattern = /https:\/\/.*\.netlify\.app$/;
+  // Allow all local network IPs and Netlify
   if (
     allowedOrigins.includes(origin) ||
-    netlifyPattern.test(origin)
+    netlifyPattern.test(origin) ||
+    origin.startsWith("http://192.168.") ||
+    origin.startsWith("http://10.") ||
+    origin.startsWith("http://172.")
   ) {
     callback(null, true);
   } else {
