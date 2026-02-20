@@ -41,8 +41,8 @@ connectDB().then(async () => {
     console.log("Socket.io not ready yet for One Team channel creation, skipping startup check (will be checked on department add)");
   }
 
-  httpServer.listen(5000, () =>
-    console.log("🚀 Server running on port 5000")
+  httpServer.listen(5001, () =>
+    console.log("🚀 Server running on port 5001")
   );
 });
 
@@ -53,7 +53,8 @@ const allowedOrigins = [
   "https://task-manager-fox-frontend.onrender.com",
   "https://foxtaskmanager.netlify.app",
   "https://benevolent-gelato-1f2e01.netlify.app",
-  "https://taskmanagerfoxdms.netlify.app"
+  "https://taskmanagerfoxdms.netlify.app",
+  "http://localhost:5174"
 ];
 
 const io = new Server(httpServer, {
@@ -141,6 +142,52 @@ io.on("connection", (socket) => {
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
 // Server started inside connectDB to ensure DB is ready
+
+app.get("/test", (req, res) => {
+  res.send("Server is working!");
+});
+
+// Inline Route for System Stats (Fixing 404 issue)
+app.get("/api/system-logs/latest", async (req, res) => {
+  try {
+    // Try to fetch from DB
+    const latestLog = await SystemLog.findOne().sort({ timestamp: -1 });
+    if (latestLog) {
+      return res.json(latestLog);
+    }
+
+    // Fallback: Return current stats if no logs in DB
+    const memory = process.memoryUsage();
+    const localIPs = getIPAddress(); // server.js has this helper
+
+    const fallbackStats = {
+      hostname: os.hostname(),
+      publicIP: publicIP || "Unavailable", // server.js has this variable
+      localIPs: localIPs,
+      ramUsage: {
+        rss: (memory.rss / 1024 / 1024).toFixed(2) + " MB",
+        heapTotal: (memory.heapTotal / 1024 / 1024).toFixed(2) + " MB",
+        heapUsed: (memory.heapUsed / 1024 / 1024).toFixed(2) + " MB",
+      },
+      timestamp: new Date()
+    };
+
+    res.json(fallbackStats);
+  } catch (error) {
+    console.error("Error fetching latest system log (inline):", error);
+    res.status(500).json({ message: "Server Error" });
+  }
+});
+
+app.get("/api/system-logs/history", async (req, res) => {
+  try {
+    const logs = await SystemLog.find().sort({ timestamp: -1 }).limit(50);
+    res.json(logs);
+  } catch (error) {
+    console.error("Error fetching system log history:", error);
+    res.status(500).json({ message: "Server Error" });
+  }
+});
 
 // Cleanup old logs on startup (optional)
 const cleanupOldLogs = async () => {
